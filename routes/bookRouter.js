@@ -1,51 +1,85 @@
 const express = require('express');
+const booksController = require('../controllers/booksController')
 
 function routes(Book){
   const bookRouter = express.Router();
-
+  const controller = booksController(Book);
   bookRouter.route('/books')
   // POST method which writes to the db
-  .post((req, res) => {
-      const book = new Book(req.body);
+  .post(controller.post)
 
-      book.save(); // saves the data to mongoDB
-      return res.status(201).json(book); //response which can be seen through insomnia/postman etc.
-  })
-  
   // GET request which returns a list of books
-  .get((req,res) => {
-    const query = {};
+  .get(controller.get)
 
-    // if req.query has the genre
-    if(req.query.genre){
-      query.genre = req.query.genre;
-
+// middleware: added to reduce code duplication
+bookRouter.use('/books/:bookId', (req, res, next) =>{
+  Book.findById(req.params.bookId, (err, book) => {
+    if(err){
+      return res.send(err);
     }
-    Book.find(query, (err, books) => {
-      if(err){
-        return res.send(err);
-      }
 
-      return res.json(books)
-      
-    });
-
+    if(book){
+      req.book = book;
+      return next();
+    }
+    return res.sendStatus(404);
+    
   });
-
+});
 
 bookRouter.route('/books/:bookId')
   // GET request which returns a single item
-  .get((req,res) => {
-    Book.findById(req.params.bookId, (err, book) => {
-      if(err){
+  .get((req,res) => res.json(req.book))
+
+  // PUT method replaces an entry with another (updates)
+  .put((req, res) =>{
+      const { book } = req;
+      book.title = req.body.title;
+      book.author = req.body.author;
+      book.genre = req.body.genre;
+      book.read = req.body.read;
+      req.book.save((err)=>{
+        if (err){
+          return res.send(err);
+        }
+
+        return res.json(book);
+    });
+  })
+  // PATCH method updates a single property/column value instead of the whole object/row (updates)
+  .patch((req, res) =>{
+    const { book } = req;
+
+    if(req.body._id){
+      delete req.body._id;
+    }
+
+    Object.entries(req.body).forEach(item => {
+      const key = item[0];
+      const value = item[1];
+      book[key] = value;
+    });
+
+    req.book.save((err)=>{
+        if (err){
+          return res.send(err);
+        }
+
+        return res.json(book);
+    });
+  })
+  .delete((req, res) => {
+    req.book.remove((err)=>{
+      if (err){
         return res.send(err);
       }
 
-      return res.json(book)
-      
-    });
-  })
-  ;
+      return res.sendStatus(204); // removed status
+    }
+    
+    );
+  });
+
 
   return bookRouter;
 }
